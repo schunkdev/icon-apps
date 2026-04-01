@@ -42,7 +42,13 @@ def _find_header_idx(lines: list[str]) -> int:
     for i, line in enumerate(lines):
         if all(needle in line for needle in HEADER_NEEDLES):
             return i
-    raise ValueError("Could not find data header row in the uploaded CSV.")
+    missing = [n for n in HEADER_NEEDLES if not any(n in ln for ln in lines)]
+    raise ValueError(
+        "This does not appear to be a valid ICON Outdoor sales export. "
+        "The required data header row was not found. "
+        f"Missing column(s): {', '.join(missing)}. "
+        "Please export the file directly from the sales system and try again."
+    )
 
 
 def _parse_csv_line(line: str) -> list[str]:
@@ -302,11 +308,30 @@ def write_xlsx_to_buffer(rows: list[Row]) -> bytes:
 def process_csv_bytes(csv_bytes: bytes) -> bytes:
     """
     Main entry point: accept CSV bytes, return XLSX bytes.
-    Raises ValueError if the CSV doesn't contain the expected header.
+    Raises ValueError with a descriptive message if the CSV is invalid.
     """
+    if not csv_bytes or not csv_bytes.strip():
+        raise ValueError("The uploaded file is empty. Please provide a valid ICON Outdoor sales export CSV.")
+
     text = csv_bytes.decode("utf-8", errors="replace")
     lines = text.splitlines()
+
+    if len(lines) < 2:
+        raise ValueError(
+            "The uploaded file contains fewer than 2 lines and cannot be a valid sales export. "
+            "Please check the file and try again."
+        )
+
     header_idx = _find_header_idx(lines)
     data_lines = lines[header_idx + 1:]
     rows = list(iter_clean_rows(data_lines))
+
+    if not rows:
+        raise ValueError(
+            "No valid sales data rows were found after processing. "
+            "The file may be empty, contain only header/subtotal lines, or all rows were filtered out "
+            "(e.g. missing Kunde, Menge, or Erlös values). "
+            "Please verify you are uploading a complete ICON Outdoor sales export."
+        )
+
     return write_xlsx_to_buffer(rows)

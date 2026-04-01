@@ -1,7 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { FileSpreadsheet, UploadCloud, X, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  FileSpreadsheet,
+  UploadCloud,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,11 +24,19 @@ import { cn } from "@/lib/utils";
 
 type ProcessingState = "idle" | "ready" | "processing" | "done" | "error";
 
+interface ErrorEntry {
+  timestamp: string;
+  filename: string;
+  message: string;
+}
+
 export function CsvProcessor() {
   const [file, setFile] = React.useState<File | null>(null);
   const [state, setState] = React.useState<ProcessingState>("idle");
   const [errorMessage, setErrorMessage] = React.useState<string>("");
   const [isDragging, setIsDragging] = React.useState(false);
+  const [errorLog, setErrorLog] = React.useState<ErrorEntry[]>([]);
+  const [logExpanded, setLogExpanded] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   function resetAll() {
@@ -30,12 +47,22 @@ export function CsvProcessor() {
   }
 
   function acceptFile(f: File) {
+    // Always reset previous error so a new upload re-enables the button
+    setErrorMessage("");
+
     if (!f.name.toLowerCase().endsWith(".csv") && f.type !== "text/csv") {
-      setErrorMessage("Only .csv files are accepted.");
+      const msg = "Invalid file type — only .csv files are accepted.";
+      setErrorMessage(msg);
+      setErrorLog((prev) => [
+        { timestamp: new Date().toISOString(), filename: f.name, message: msg },
+        ...prev,
+      ]);
       setState("error");
+      setFile(null);
+      if (inputRef.current) inputRef.current.value = "";
       return;
     }
-    setErrorMessage("");
+
     setFile(f);
     setState("ready");
   }
@@ -81,7 +108,7 @@ export function CsvProcessor() {
           const json = await res.json();
           if (json?.error) msg = json.error;
         } catch {
-          // not JSON — use status text
+          // response was not JSON — fall back to status text
         }
         throw new Error(msg);
       }
@@ -98,25 +125,49 @@ export function CsvProcessor() {
 
       setState("done");
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred.");
+      const msg =
+        err instanceof Error ? err.message : "An unexpected error occurred.";
+      setErrorMessage(msg);
+      setErrorLog((prev) => [
+        {
+          timestamp: new Date().toISOString(),
+          filename: file?.name ?? "unknown",
+          message: msg,
+        },
+        ...prev,
+      ]);
+      // Clear the file — user must upload a new one to re-enable the button
+      setFile(null);
+      if (inputRef.current) inputRef.current.value = "";
       setState("error");
     }
   }
 
+  const canProcess = state === "ready" || state === "done";
+
   return (
     <div className="w-full max-w-lg space-y-4">
-      {/* Header */}
-      <div className="text-center space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">ICON CSV Processor</h1>
-        <p className="text-sm text-muted-foreground">
-          Upload a raw export CSV and receive a cleaned Excel dashboard.
+      {/* Brand header */}
+      <div className="text-center space-y-1.5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          ICON Outdoor
+        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Sales Data Processor
+        </h1>
+        <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+          Upload a raw sales export CSV to enhance and clean it into a
+          structured Excel dashboard — including revenue summaries, brand
+          breakdowns, and customer analytics.
         </p>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Upload CSV</CardTitle>
-          <CardDescription>Drag &amp; drop or click to select a .csv file</CardDescription>
+          <CardDescription>
+            Drag &amp; drop or click to select a .csv export file
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -134,8 +185,10 @@ export function CsvProcessor() {
               "relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-10 text-center transition-colors cursor-pointer select-none",
               isDragging
                 ? "border-primary bg-primary/5"
+                : state === "error"
+                ? "border-destructive/50 bg-destructive/5 hover:border-destructive/70"
                 : "border-border hover:border-primary/60 hover:bg-muted/40",
-              (state === "processing") && "pointer-events-none opacity-60"
+              state === "processing" && "pointer-events-none opacity-60"
             )}
           >
             <input
@@ -157,29 +210,56 @@ export function CsvProcessor() {
                   </p>
                 </div>
               </>
+            ) : state === "error" ? (
+              <>
+                <UploadCloud className="h-10 w-10 text-destructive/60" />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-destructive">
+                    Upload a new file to try again
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    .csv files only
+                  </p>
+                </div>
+              </>
             ) : (
               <>
                 <UploadCloud className="h-10 w-10 text-muted-foreground" />
                 <div className="space-y-0.5">
                   <p className="text-sm font-medium">Drop your CSV here</p>
-                  <p className="text-xs text-muted-foreground">or click to browse — .csv only</p>
+                  <p className="text-xs text-muted-foreground">
+                    or click to browse — .csv only
+                  </p>
                 </div>
               </>
             )}
           </div>
 
-          {/* Status messages */}
+          {/* Error label */}
+          {state === "error" && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="space-y-0.5">
+                <p className="font-medium">Processing failed</p>
+                <p className="text-xs opacity-90">
+                  {errorMessage || "An unknown error occurred."}
+                </p>
+                <p className="text-xs opacity-70 mt-1">
+                  Please upload a valid ICON Outdoor sales export CSV to
+                  continue.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Success label */}
           {state === "done" && (
             <div className="flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>Download started — your Excel dashboard is ready.</span>
-            </div>
-          )}
-
-          {state === "error" && (
-            <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{errorMessage || "Something went wrong."}</span>
             </div>
           )}
         </CardContent>
@@ -187,8 +267,9 @@ export function CsvProcessor() {
         <CardFooter className="flex gap-2">
           <Button
             className="flex-1"
-            disabled={state !== "ready" && state !== "done" && state !== "error"}
+            disabled={!canProcess}
             onClick={processFile}
+            aria-disabled={!canProcess}
           >
             {state === "processing" ? (
               <>
@@ -213,8 +294,54 @@ export function CsvProcessor() {
         </CardFooter>
       </Card>
 
+      {/* Error log */}
+      {errorLog.length > 0 && (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setLogExpanded((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors"
+            aria-expanded={logExpanded}
+          >
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              Error log
+              <span className="rounded-full bg-destructive/15 text-destructive px-1.5 py-0.5 text-xs font-semibold leading-none">
+                {errorLog.length}
+              </span>
+            </span>
+            {logExpanded ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+
+          {logExpanded && (
+            <div className="divide-y divide-border border-t border-border">
+              {errorLog.map((entry, i) => (
+                <div key={i} className="px-4 py-3 space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <time dateTime={entry.timestamp}>
+                      {new Date(entry.timestamp).toLocaleString()}
+                    </time>
+                    <span className="mx-1">·</span>
+                    <span className="font-mono truncate max-w-[180px]">
+                      {entry.filename}
+                    </span>
+                  </div>
+                  <p className="text-xs text-destructive">{entry.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-center text-xs text-muted-foreground">
-        Your file is processed server-side and immediately discarded — nothing is stored.
+        Your file is processed server-side and immediately discarded — nothing
+        is stored.
       </p>
     </div>
   );
@@ -229,7 +356,14 @@ function ProcessingSpinner() {
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
       <path
         className="opacity-75"
         fill="currentColor"

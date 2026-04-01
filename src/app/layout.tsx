@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ICON CSV Processor",
-  description: "Upload a CSV file and download a cleaned Excel dashboard.",
+  title: "ICON Outdoor — Sales Data Processor",
+  description:
+    "Upload a raw ICON Outdoor sales export CSV to enhance and clean it into a structured Excel dashboard with revenue summaries, brand breakdowns, and customer analytics.",
 };
 
 export default function RootLayout({
