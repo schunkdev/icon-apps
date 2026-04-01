@@ -2,7 +2,9 @@
   "name": "my-app",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.9.1",
   "scripts": {
+    "preinstall": "node -e \"const ua=process.env.npm_config_user_agent||''; if(!ua.includes('yarn')){console.error('This repo uses Yarn. Run: yarn install'); process.exit(1)}\"",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
