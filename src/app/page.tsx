@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,6 +37,23 @@ export default function Home() {
             <CardContent className="pt-0">
               <Button asChild className="w-full">
                 <Link href="/csv-sales-dashboard">Open</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ListChecks className="h-4 w-4 text-primary" />
+                BP / USP Processor
+              </CardTitle>
+              <CardDescription>
+                Split base data Excel USPs into one CSV per bullet-point index.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <Button asChild className="w-full">
+                <Link href="/bp-usp-tool">Open</Link>
               </Button>
             </CardContent>
           </Card>

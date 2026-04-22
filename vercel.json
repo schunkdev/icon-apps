@@ -2,6 +2,9 @@
   "functions": {
     "api/process.py": {
       "maxDuration": 60
+    },
+    "api/bp_usp_process.py": {
+      "maxDuration": 60
     }
   }
 }
