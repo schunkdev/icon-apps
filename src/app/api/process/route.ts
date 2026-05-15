@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       );
     });
 
-    return new NextResponse(xlsxBytes, {
+    return new NextResponse(new Uint8Array(xlsxBytes), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
