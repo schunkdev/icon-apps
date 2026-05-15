@@ -13,11 +13,35 @@ from __future__ import annotations
 import csv
 import io
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, Iterator
 
 
 HEADER_NEEDLES = ("Marke: Name", "Artikelbeschr.", "Menge Verkauft", "Gesamtsumme Erlös")
+
+_ENCODINGS = ("utf-8", "utf-8-sig", "mac_roman", "cp1252", "latin-1")
+
+
+def _decode_csv_bytes(raw: bytes) -> str:
+    """Try common encodings; prefer the first that decodes AND contains the expected headers."""
+    normalized_needles = [_normalize(n) for n in HEADER_NEEDLES]
+    candidates: list[str] = []
+    for enc in _ENCODINGS:
+        try:
+            text = raw.decode(enc)
+        except (UnicodeDecodeError, ValueError):
+            continue
+        norm_text = _normalize(text)
+        if all(needle in norm_text for needle in normalized_needles):
+            return text
+        candidates.append(text)
+    return candidates[0] if candidates else raw.decode("utf-8", errors="replace")
+
+
+def _normalize(text: str) -> str:
+    """NFC-normalize and collapse whitespace for robust comparison."""
+    return " ".join(unicodedata.normalize("NFC", text).split())
 
 KDE_RE = re.compile(r"^KDE\d+\b")
 SUBTOTAL_RE = re.compile(r"^Gesamtsumme\s*-")
@@ -39,10 +63,16 @@ class Row:
 
 
 def _find_header_idx(lines: list[str]) -> int:
+    normalized_needles = [_normalize(n) for n in HEADER_NEEDLES]
     for i, line in enumerate(lines):
-        if all(needle in line for needle in HEADER_NEEDLES):
+        norm_line = _normalize(line)
+        if all(needle in norm_line for needle in normalized_needles):
             return i
-    missing = [n for n in HEADER_NEEDLES if not any(n in ln for ln in lines)]
+    missing = [
+        n
+        for n, nn in zip(HEADER_NEEDLES, normalized_needles)
+        if not any(nn in _normalize(ln) for ln in lines)
+    ]
     raise ValueError(
         "This does not appear to be a valid ICON Outdoor sales export. "
         "The required data header row was not found. "
@@ -51,10 +81,17 @@ def _find_header_idx(lines: list[str]) -> int:
     )
 
 
-def _parse_csv_line(line: str) -> list[str]:
-    row = next(csv.reader([line], delimiter=",", quotechar='"', skipinitialspace=True))
-    if len(row) == 1 and "," in row[0]:
-        row = next(csv.reader([row[0]], delimiter=",", quotechar='"', skipinitialspace=True))
+def _detect_delimiter(header_line: str) -> str:
+    """Pick ';' or ',' based on which appears more often in the header row."""
+    if header_line.count(";") > header_line.count(","):
+        return ";"
+    return ","
+
+
+def _parse_csv_line(line: str, delimiter: str = ",") -> list[str]:
+    row = next(csv.reader([line], delimiter=delimiter, quotechar='"', skipinitialspace=True))
+    if len(row) == 1 and delimiter in row[0]:
+        row = next(csv.reader([row[0]], delimiter=delimiter, quotechar='"', skipinitialspace=True))
     if len(row) < 6:
         row = row + [""] * (6 - len(row))
     return [c.strip() for c in row[:6]]
@@ -84,7 +121,7 @@ def _to_float(x: str) -> float | None:
         return None
 
 
-def iter_clean_rows(lines: Iterable[str]) -> Iterator[Row]:
+def iter_clean_rows(lines: Iterable[str], delimiter: str = ",") -> Iterator[Row]:
     current_kunde = ""
     current_brand = ""
 
@@ -92,9 +129,9 @@ def iter_clean_rows(lines: Iterable[str]) -> Iterator[Row]:
         if not line.strip():
             continue
 
-        c0, c1, c2, c3, c4, c5 = _parse_csv_line(line)
+        c0, c1, c2, c3, c4, c5 = _parse_csv_line(line, delimiter)
 
-        if KDE_RE.search(c0) and not any([c1, c2, c3, c4, c5]):
+        if KDE_RE.search(c0) and not any([c1, c2, c3]):
             current_kunde = c0
             current_brand = ""
             continue
@@ -313,7 +350,7 @@ def process_csv_bytes(csv_bytes: bytes) -> bytes:
     if not csv_bytes or not csv_bytes.strip():
         raise ValueError("The uploaded file is empty. Please provide a valid ICON Outdoor sales export CSV.")
 
-    text = csv_bytes.decode("utf-8", errors="replace")
+    text = _decode_csv_bytes(csv_bytes)
     lines = text.splitlines()
 
     if len(lines) < 2:
@@ -323,8 +360,9 @@ def process_csv_bytes(csv_bytes: bytes) -> bytes:
         )
 
     header_idx = _find_header_idx(lines)
+    delimiter = _detect_delimiter(lines[header_idx])
     data_lines = lines[header_idx + 1:]
-    rows = list(iter_clean_rows(data_lines))
+    rows = list(iter_clean_rows(data_lines, delimiter))
 
     if not rows:
         raise ValueError(
